@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+import argparse
+import os
+from analyzer import CodeChangeAnalyzer
+from ai_client import AISummarizer
+import json
+
+def main():
+    parser = argparse.ArgumentParser(description='AI PR Summarizer')
+    parser.add_argument('--repo-path', default='.', help='仓库路径')
+    parser.add_argument('--base-ref', default='main', help='基础分支')
+    parser.add_argument('--output', help='输出文件路径')
+    parser.add_argument('--dry-run', action='store_true', help='试运行')
+    
+    args = parser.parse_args()
+    
+    # 1. 分析代码变更
+    analyzer = CodeChangeAnalyzer(args.repo_path)
+    diff = analyzer.get_diff(args.base_ref)
+    analysis = analyzer.analyze_changes(diff)
+    
+    # 2. 生成AI摘要
+    if os.getenv("OPENAI_API_KEY"):
+        ai = AISummarizer()
+        with open("config/prompts/default.md", "r") as f:
+            template = f.read()
+        summary = ai.generate_summary(analysis, template)
+    else:
+        summary = f"## 代码变更分析\n\n共修改 {analysis['files_changed']} 个文件"
+    
+    # 3. 输出结果
+    if args.output:
+        with open(args.output, "w") as f:
+            f.write(summary)
+    
+    if args.dry_run:
+        print("=== 生成的PR描述 ===")
+        print(summary)
+    else:
+        # 设置GitHub Actions输出
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+            print(f'summary={summary}', file=fh)
+
+if __name__ == "__main__":
+    main()
